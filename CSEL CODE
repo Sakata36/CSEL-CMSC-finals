@@ -1,0 +1,117 @@
+import os
+import random
+import shutil
+import textwrap
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.pipeline import make_pipeline
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+
+# === TERMINAL COLOR STYLING ===
+RESET = '\033[0m'
+BOLD = '\033[1m'
+RED = '\033[91m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+WHITE = '\033[97m'
+
+# === USER INPUT FOR TOTAL DATASET SIZE ===
+def get_positive_int(prompt, default):
+    try:
+        value = int(input(f"{prompt} (default {default}): ") or default)
+        return max(0, value)
+    except ValueError:
+        return default
+
+TOTAL_LIMIT = get_positive_int("Enter total number of emails to load", 1000)
+PREVIEW_LIMIT = 20  # Emails to preview in the UI
+
+SPAM_FOLDER = 'spam'
+HAM_FOLDER = 'easy_ham'
+
+# === LOAD EMAILS FROM FOLDERS ===
+def load_emails(folder_path):
+    emails = []
+    files = os.listdir(folder_path)
+    for file in files:
+        with open(os.path.join(folder_path, file), 'r', encoding='latin1') as f:
+            emails.append(f.read())
+    return emails
+
+# Load all available emails first
+all_spam = load_emails(SPAM_FOLDER)
+all_ham = load_emails(HAM_FOLDER)
+
+# Shuffle and sample total dataset
+combined_pool = [(email, 1) for email in all_spam] + [(email, 0) for email in all_ham]
+random.shuffle(combined_pool)
+
+# Limit to total input size
+sampled_data = combined_pool[:TOTAL_LIMIT]
+sampled_emails = [e for e, label in sampled_data]
+sampled_labels = [label for e, label in sampled_data]
+
+# Split for summary
+final_spam_count = sampled_labels.count(1)
+final_ham_count = sampled_labels.count(0)
+
+# === MODEL TRAINING ===
+model = make_pipeline(TfidfVectorizer(stop_words='english'), MultinomialNB())
+model.fit(sampled_emails, sampled_labels)
+
+# === PREDICTION & METRICS ===
+predictions = model.predict(sampled_emails)
+probs = model.predict_proba(sampled_emails)[:, 1]
+
+accuracy = accuracy_score(sampled_labels, predictions)
+precision = precision_score(sampled_labels, predictions)
+recall = recall_score(sampled_labels, predictions)
+f1 = f1_score(sampled_labels, predictions)
+tn, fp, fn, tp = confusion_matrix(sampled_labels, predictions).ravel()
+
+# === UI FUNCTIONS ===
+def get_terminal_width(default=60):
+    try:
+        return shutil.get_terminal_size().columns - 4
+    except:
+        return default
+
+def print_email_ui(i, email_text, is_spam, prob):
+    width = min(get_terminal_width(), 100)
+    border = WHITE + "=" * width + RESET
+    icon = "🚫 Spam" if is_spam else "📥 Inbox"
+    color = RED if is_spam else GREEN
+    wrapped_body = textwrap.fill(email_text[:500], width=width)
+
+    print(border)
+    print(f"{color}{BOLD}{icon} — Email #{i}{RESET}")
+    print("-" * width)
+    print(wrapped_body + ("\n..." if len(email_text) > 500 else "\n"))
+    print(f"{YELLOW}📊 Spam Probability:{RESET} {prob:.2%}")
+    print(f"{WHITE}📌 Options: {'[Delete] [Move to Inbox]' if is_spam else '[Reply] [Move to Spam]'}{RESET}")
+    print(border)
+
+# === CLASSIFY AND DISPLAY PREVIEW ===
+inbox = []
+spam = []
+
+for i, (email, label) in enumerate(zip(sampled_emails, predictions)):
+    is_spam = label == 1
+    prob = probs[i]
+    (spam if is_spam else inbox).append(email)
+
+    if i < PREVIEW_LIMIT:
+        print_email_ui(i + 1, email, is_spam, prob)
+
+# === SUMMARY ===
+print(f"\n{BOLD}📁 Folder Summary:{RESET}")
+print(f"  📥 Inbox: {len(inbox)}")
+print(f"  🚫 Spam: {len(spam)}")
+print(f"  📦 Total emails used: {len(sampled_emails)} (Spam: {final_spam_count}, Ham: {final_ham_count})\n")
+
+print(f"{BOLD}📊 Model Evaluation Metrics:{RESET}")
+print(f"  ✅ Accuracy : {accuracy:.2%}")
+print(f"  📌 Precision: {precision:.2%}")
+print(f"  🔁 Recall   : {recall:.2%}")
+print(f"  🧮 F1 Score : {f1:.2%}")
+print(f"  🧾 Confusion Matrix: TP={tp}, FP={fp}, TN={tn}, FN={fn}\n")
