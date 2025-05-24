@@ -42,18 +42,26 @@ def load_emails(folder_path):
 all_spam = load_emails(SPAM_FOLDER)
 all_ham = load_emails(HAM_FOLDER)
 
-# Shuffle and sample total dataset
-combined_pool = [(email, 1) for email in all_spam] + [(email, 0) for email in all_ham]
-random.shuffle(combined_pool)
+# Calculate how many spam and ham to sample for 40% spam and 60% ham
+spam_count = int(TOTAL_LIMIT * 0.40)
+ham_count = TOTAL_LIMIT - spam_count
 
-# Limit to total input size
-sampled_data = combined_pool[:TOTAL_LIMIT]
-sampled_emails = [e for e, label in sampled_data]
-sampled_labels = [label for e, label in sampled_data]
+# Shuffle the spam and ham emails independently
+random.shuffle(all_spam)
+random.shuffle(all_ham)
 
-# Split for summary
-final_spam_count = sampled_labels.count(1)
-final_ham_count = sampled_labels.count(0)
+# Sample the required number from each class (handle if dataset has fewer emails)
+sampled_spam = all_spam[:spam_count] if len(all_spam) >= spam_count else all_spam
+sampled_ham = all_ham[:ham_count] if len(all_ham) >= ham_count else all_ham
+
+# Combine sampled spam and ham and create labels
+sampled_emails = sampled_spam + sampled_ham
+sampled_labels = [1]*len(sampled_spam) + [0]*len(sampled_ham)
+
+# Shuffle combined sampled data so spam and ham are mixed
+combined = list(zip(sampled_emails, sampled_labels))
+random.shuffle(combined)
+sampled_emails, sampled_labels = zip(*combined)
 
 # === MODEL TRAINING ===
 model = make_pipeline(TfidfVectorizer(stop_words='english'), MultinomialNB())
@@ -104,6 +112,9 @@ for i, (email, label) in enumerate(zip(sampled_emails, predictions)):
         print_email_ui(i + 1, email, is_spam, prob)
 
 # === SUMMARY ===
+final_spam_count = sampled_labels.count(1)
+final_ham_count = sampled_labels.count(0)
+
 print(f"\n{BOLD}📁 Folder Summary:{RESET}")
 print(f"  📥 Inbox: {len(inbox)}")
 print(f"  🚫 Spam: {len(spam)}")
