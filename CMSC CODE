@@ -1,0 +1,164 @@
+import heapq
+import time
+from collections import Counter
+import random
+import string
+from graphviz import Digraph
+
+
+# Node class for Huffman Tree
+class Node:
+    def __init__(self, char=None, freq=0):
+        self.char = char
+        self.freq = freq
+        self.left = None
+        self.right = None
+
+    def __lt__(self, other):
+        return self.freq < other.freq
+
+
+# Build Huffman Tree
+def build_huffman_tree(freq_map):
+    heap = [Node(char, freq) for char, freq in freq_map.items()]
+    heapq.heapify(heap)
+
+    while len(heap) > 1:
+        n1 = heapq.heappop(heap)
+        n2 = heapq.heappop(heap)
+        merged = Node(freq=n1.freq + n2.freq)
+        merged.left = n1
+        merged.right = n2
+        heapq.heappush(heap, merged)
+
+    return heap[0]
+
+
+# Generate Huffman Codes
+def build_codes(node, prefix='', code_map=None):
+    if code_map is None:
+        code_map = {}
+    if node is None:
+        return
+    if node.char is not None:
+        code_map[node.char] = prefix
+    build_codes(node.left, prefix + '0', code_map)
+    build_codes(node.right, prefix + '1', code_map)
+    return code_map
+
+
+# Encode the text
+def encode(text, code_map):
+    return ''.join(code_map[char] for char in text)
+
+
+# Display Huffman Tree (text-based)
+def print_huffman_tree(node, indent=''):
+    if node is None:
+        return
+    if node.char is not None:
+        print(f"{indent}\u2514\u2500 '{node.char}' ({node.freq})")
+    else:
+        print(f"{indent}\u2514\u2500 [Internal Node] ({node.freq})")
+    print_huffman_tree(node.left, indent + '    ')
+    print_huffman_tree(node.right, indent + '    ')
+
+
+# Generate text with different frequency patterns
+def generate_text(size, mode='uniform'):
+    chars = string.ascii_lowercase
+    if mode == 'uniform':
+        return ''.join(random.choice(chars) for _ in range(size))
+    elif mode == 'skewed':
+        weights = [i for i in range(1, 27)]  # a-z increasing freq
+        return ''.join(random.choices(chars, weights=weights, k=size))
+    elif mode == 'realistic':
+        sample = "this is a simple sample text for huffman coding compression analysis"
+        return ''.join(random.choices(sample.replace(" ", ""), k=size))
+
+
+# Visualize Huffman Tree using graphviz
+def visualize_huffman_tree(node, filename='huffman_tree', node_id=0, dot=None):
+    if dot is None:
+        dot = Digraph(comment='Huffman Tree')
+    label = f"{node.char}\\n{node.freq}" if node.char else f"{node.freq}"
+    dot.node(str(node_id), label)
+
+    left_id = node_id * 2 + 1
+    right_id = node_id * 2 + 2
+
+    if node.left:
+        dot.edge(str(node_id), str(left_id))
+        visualize_huffman_tree(node.left, filename, left_id, dot)
+    if node.right:
+        dot.edge(str(node_id), str(right_id))
+        visualize_huffman_tree(node.right, filename, right_id, dot)
+
+    if node_id == 0:
+        dot.render(filename, view=True)  # Saves as filename.pdf and opens it
+
+    return dot
+
+
+# Main Experiment Runner
+def run_experiment(size=500, display_tree=True, visualize=False):
+    print("=" * 60)
+    print(" HUFFMAN CODING PERFORMANCE ANALYSIS ".center(60, '='))
+    print("=" * 60)
+
+    for mode in ['uniform', 'skewed', 'realistic']:
+        print(f"\n> Frequency Mode: {mode.upper()}")
+
+        # Generate text
+        text = generate_text(size, mode)
+        freq_map = Counter(text)
+
+        # Huffman steps
+        start = time.time()
+        tree = build_huffman_tree(freq_map)
+        codes = build_codes(tree)
+        encoded = encode(text, codes)
+        end = time.time()
+
+        # Metrics
+        original_bits = len(text) * 8
+        compressed_bits = len(encoded)
+        ratio = compressed_bits / original_bits
+        exec_time = (end - start) * 1000  # ms
+
+        # Output
+        print("-" * 60)
+        print(f"{'Original Size (bits)':<30}: {original_bits}")
+        print(f"{'Compressed Size (bits)':<30}: {compressed_bits}")
+        print(f"{'Compression Ratio':<30}: {ratio:.4f}")
+        print(f"{'Execution Time (ms)':<30}: {exec_time:.2f}")
+        print("-" * 60)
+
+        # Show Huffman Codes
+        print("\nHuffman Codes:")
+        for char, code in sorted(codes.items()):
+            print(f"  '{char}': {code}")
+
+        # Optional: Show tree textually
+        if display_tree:
+            print("\nHuffman Tree:")
+            print_huffman_tree(tree)
+
+        # Optional: Visualize tree graphically with Graphviz
+        if visualize:
+            visualize_huffman_tree(tree, filename=f'huffman_tree_{mode}')
+
+
+# Run the experiment with user input size
+if __name__ == "__main__":
+    while True:
+        try:
+            user_size = int(input("Enter text size (100, 300, or 500): "))
+            if user_size in [100, 300, 500]:
+                break
+            else:
+                print("Please enter 100, 300, or 500 only.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
+
+    run_experiment(size=user_size, visualize=True)
